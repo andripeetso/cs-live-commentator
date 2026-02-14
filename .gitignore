@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Environment variables (secrets)
+.env
+.env.*
+!.env.example
+
+# Build output
+dist/
+build/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Generated audio clips
+clips/
+*.wav
+*.mp3
+*.ogg
+*.pcm
+
+# TypeScript
+*.tsbuildinfo

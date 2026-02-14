@@ -1,5 +1,7 @@
 # CS2 AI Live Commentator -- Master Execution Guide
 
+> **PUBLIC REPOSITORY** — This repo is public on GitHub. Do not include API keys, secrets, credentials, or proprietary information in any file.
+
 > **Version**: 1.0 | **Created**: 2026-02-13
 > **Status**: Greenfield -- PRD finalized, no source code implemented yet.
 

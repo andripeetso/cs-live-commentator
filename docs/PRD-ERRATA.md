@@ -1,5 +1,7 @@
 # PRD Errata — CS2 AI Live Commentator
 
+> **PUBLIC REPOSITORY** — This repo is public on GitHub. Do not include API keys, secrets, credentials, or proprietary information in any file.
+
 > Audit performed: 2026-02-13
 > Audited file: `CS-dev-PRD.md`
 

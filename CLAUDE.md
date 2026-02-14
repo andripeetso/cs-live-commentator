@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **PUBLIC REPOSITORY** — This repo is public on GitHub. Never commit API keys, secrets, credentials, .env files, or any proprietary/sensitive information. Use environment variables for all secrets and ensure `.gitignore` covers sensitive files.
+
 ## Project Overview
 
 CS2 AI Live Commentator — a real-time streaming pipeline that watches CS2 matches via Game State Integration (GSI), generates commentary with an LLM, converts it to speech via Cartesia TTS, and mixes it with crowd sounds + a live crowd behavior engine for broadcast-quality audio.

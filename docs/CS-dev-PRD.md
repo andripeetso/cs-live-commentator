@@ -1,5 +1,7 @@
 # CS2 AI Live Commentator — Product Requirements Document
 
+> **PUBLIC REPOSITORY** — This repo is public on GitHub. Do not include API keys, secrets, credentials, or proprietary information anywhere in the codebase. All secrets must be provided via environment variables at runtime.
+
 > A complete, execution-ready PRD. Pick this up at any time and build it.
 
 ## 1. Product Overview
