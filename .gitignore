@@ -33,3 +33,11 @@ clips/
 
 # TypeScript
 *.tsbuildinfo
+
+# Python
+python/venv/
+python/models/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/

@@ -127,3 +127,33 @@ Copy `config/gamestate_integration_commentator.cfg` to your CS2 cfg directory:
 Production: `fastify`, `@anthropic-ai/sdk` (^0.74.x), `groq-sdk`, `cs2-gsi-z`, `ws`, `pcm-convert`, `dotenv`
 Dev: `typescript`, `tsx`, `vitest`, `@types/ws`
 Audio: Web Audio API (browser) / `sox`/`ffplay` via child_process (server testing fallback)
+
+---
+
+## Python Emotion Detector (Step 1 MVP)
+
+Standalone Python webcam emotion detection. Will eventually feed into the commentator system.
+
+**Location**: `python/`
+**Docs**: `docs/EMOTION-DETECTOR-PRD.md`
+
+### Commands
+
+```bash
+cd python && python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt        # First run downloads DeepFace model (~100MB)
+python main.py                         # Start emotion detection (press 'q' to quit)
+python main.py --camera 1              # Use alternate camera
+python -m pytest tests/ -v             # Run tests
+```
+
+### Architecture
+
+Three-thread pipeline: `WebcamCapture` (daemon) → `EmotionDetector`/DeepFace (daemon) → `AnnotatedDisplay` (main thread).
+Emits `EmotionEvent` JSON to stdout on emotion changes (debounced, smoothed).
+
+### Roadmap
+
+1. **Step 1 (current)**: Webcam → face detection → emotion recognition → live annotated preview
+2. **Step 2**: Add screen capture (`mss` library) to see what user is doing
+3. **Step 3**: Feed emotions + screen context into LLM for spoken "work mode" commentary via WebSocket bridge to Node.js
