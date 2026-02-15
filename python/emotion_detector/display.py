@@ -11,6 +11,7 @@ import numpy as np
 from . import config
 from .action_smoothing import ActionState
 from .events import DetectionResult
+from .hand_rules import GestureResult
 from .smoothing import SmoothedState
 
 
@@ -31,23 +32,14 @@ class AnnotatedDisplay:
         """Main display loop (blocking). Call from the main thread."""
         while self.running:
             try:
-                frame, result, smoothed, action_state = self._result_queue.get(timeout=1.0)
+                frame, result, smoothed, action_state, gesture = self._result_queue.get(timeout=1.0)
             except queue.Empty:
                 continue
-            except ValueError:
-                # Handle old 3-tuple format during transition
-                try:
-                    data = self._result_queue.get(timeout=1.0)
-                    if len(data) == 3:
-                        frame, result, smoothed = data
-                        action_state = ActionState()
-                    else:
-                        continue
-                except Exception:
-                    continue
+            except (ValueError, TypeError):
+                continue
 
             self._update_fps()
-            annotated = self._annotate(frame, result, smoothed, action_state)
+            annotated = self._annotate(frame, result, smoothed, action_state, gesture)
             cv2.imshow("Emotion Detector", annotated)
 
             if cv2.waitKey(1) & 0xFF == ord("q"):
@@ -67,6 +59,7 @@ class AnnotatedDisplay:
         result: DetectionResult,
         smoothed: SmoothedState,
         action_state: ActionState,
+        gesture: GestureResult,
     ) -> np.ndarray:
         """Draw all overlays on the frame."""
         # FPS counter (top-left)
@@ -124,8 +117,11 @@ class AnnotatedDisplay:
             # Emotion bar chart (right side)
             self._draw_emotion_bars(frame, smoothed.scores)
 
-        # Action label (bottom-left, always visible when action detected)
+        # Action label (bottom-left)
         self._draw_action_label(frame, action_state)
+
+        # Gesture label (bottom-left, below action)
+        self._draw_gesture_label(frame, gesture)
 
         return frame
 
@@ -151,6 +147,33 @@ class AnnotatedDisplay:
             cv2.FONT_HERSHEY_SIMPLEX,
             config.FONT_SCALE * 1.4,
             (255, 255, 0),  # cyan in BGR
+            config.FONT_THICKNESS,
+        )
+
+    def _draw_gesture_label(
+        self,
+        frame: np.ndarray,
+        gesture: GestureResult,
+    ) -> None:
+        """Draw detected hand gesture label below the action label."""
+        if gesture.gesture is None:
+            return
+
+        label = gesture.gesture.upper().replace("_", " ")
+        hand = f" ({gesture.hand_label})" if gesture.hand_label else ""
+        text = f"{label}{hand} {gesture.confidence:.0%}"
+
+        # Color based on gesture type
+        color = (0, 0, 255) if gesture.gesture == "middle_finger" else (0, 255, 255)  # red or yellow
+
+        y = config.FRAME_HEIGHT - 80
+        cv2.putText(
+            frame,
+            text,
+            (10, y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            config.FONT_SCALE * 1.4,
+            color,
             config.FONT_THICKNESS,
         )
 

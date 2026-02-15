@@ -12,6 +12,8 @@ from . import config
 from .action_detector import ActionDetector
 from .action_smoothing import ActionSmoother, ActionState
 from .events import DetectionResult, EventEmitter
+from .hand_detector import HandDetector
+from .hand_rules import GestureResult
 from .smoothing import EmotionSmoother, SmoothedState
 
 
@@ -22,7 +24,7 @@ class EmotionDetector:
     - MediaPipe Pose: every frame (~25ms) → action detection
     - DeepFace: every Nth frame (~100ms) → emotion detection
 
-    Produces (frame, DetectionResult, SmoothedState, ActionState)
+    Produces (frame, DetectionResult, SmoothedState, ActionState, GestureResult)
     tuples into the result queue for the display to consume.
     """
 
@@ -41,6 +43,12 @@ class EmotionDetector:
         self._thread: threading.Thread | None = None
         self._deepface = None  # lazy import
         self._action_detector = ActionDetector()
+        self._hand_detector = HandDetector()
+        self._vision_analyzer = None  # set by pipeline
+
+    def set_vision_analyzer(self, analyzer: object) -> None:
+        """Set the vision analyzer to share frames with."""
+        self._vision_analyzer = analyzer
 
     def start(self) -> None:
         """Start the detector thread (daemon)."""
@@ -56,9 +64,12 @@ class EmotionDetector:
 
     def _process_loop(self) -> None:
         print("[DETECTOR] Loading MediaPipe Pose model...")
-        # Warm up action detector (lazy init)
         self._action_detector._ensure_pose()
         print("[DETECTOR] MediaPipe Pose loaded")
+
+        print("[DETECTOR] Loading MediaPipe Hand model...")
+        self._hand_detector._ensure_hands()
+        print("[DETECTOR] MediaPipe Hand loaded")
 
         print("[DETECTOR] Loading DeepFace emotion model...")
         self._ensure_deepface()
@@ -67,10 +78,12 @@ class EmotionDetector:
         frame_count = 0
         last_dominant_emotion = None
         last_dominant_action = None
+        last_gesture = None
 
-        # Keep latest emotion result for frames where DeepFace doesn't run
+        # Keep latest results for frames where detectors don't run
         latest_emotion_result = DetectionResult(face_found=False)
         latest_smoothed = self._smoother.state
+        latest_gesture = GestureResult()
 
         while self._running:
             try:
@@ -80,7 +93,11 @@ class EmotionDetector:
 
             start = time.time()
 
-            # --- Action detection: every frame ---
+            # Share frame with vision analyzer (non-blocking)
+            if self._vision_analyzer is not None:
+                self._vision_analyzer.set_frame(frame)
+
+            # --- Action detection (pose): every frame ---
             action_result = self._action_detector.detect(frame)
             action_state = self._action_smoother.update(action_result)
 
@@ -92,13 +109,25 @@ class EmotionDetector:
                     print("[ACTION] (idle)")
                 last_dominant_action = action_state.action
 
+            # --- Hand gesture detection: every frame ---
+            gesture = self._hand_detector.detect(frame)
+            if gesture.gesture is not None:
+                latest_gesture = gesture
+                if gesture.gesture != last_gesture:
+                    label = gesture.gesture.upper().replace("_", " ")
+                    hand = f" ({gesture.hand_label})" if gesture.hand_label else ""
+                    print(f"[GESTURE] {label}{hand} (confidence: {gesture.confidence:.0%})")
+                    last_gesture = gesture.gesture
+            elif last_gesture is not None:
+                latest_gesture = GestureResult()
+                last_gesture = None
+
             # --- Emotion detection: every Nth frame ---
             if frame_count % config.DEEPFACE_EVERY_N == 0:
                 emotion_start = time.time()
                 result = self._analyze_frame(frame)
                 result.processing_time_ms = (time.time() - emotion_start) * 1000
 
-                # Feed to smoother if face found
                 if result.face_found:
                     latest_smoothed = self._smoother.update(
                         result.emotion_scores,
@@ -123,13 +152,13 @@ class EmotionDetector:
             if frame_count == 1:
                 print(f"[DETECTOR] First frame processed in {total_ms:.0f}ms")
 
-            # Put result for display (4-tuple now)
+            # Put result for display (5-tuple)
             if self._result_queue.full():
                 try:
                     self._result_queue.get_nowait()
                 except queue.Empty:
                     pass
-            self._result_queue.put((frame, latest_emotion_result, latest_smoothed, action_state))
+            self._result_queue.put((frame, latest_emotion_result, latest_smoothed, action_state, latest_gesture))
 
     def _analyze_frame(self, frame: np.ndarray) -> DetectionResult:
         """Run DeepFace.analyze() on a single frame."""
@@ -167,5 +196,6 @@ class EmotionDetector:
         """Signal the detector thread to stop."""
         self._running = False
         self._action_detector.close()
+        self._hand_detector.close()
         if self._thread is not None:
             self._thread.join(timeout=2.0)

@@ -33,6 +33,16 @@ ACTION_SMOOTHING_WINDOW = 8   # rolling vote window
 ACTION_DEBOUNCE_SECONDS = 0.5 # min interval between action events
 ACTION_MIN_VOTE_RATIO = 0.3   # min fraction of window to report action
 
+# MediaPipe Hand Landmarks (Tasks API — uses hand_landmarker.task model)
+HAND_MIN_DETECTION_CONFIDENCE = 0.5
+HAND_MIN_PRESENCE_CONFIDENCE = 0.5
+HAND_MIN_TRACKING_CONFIDENCE = 0.5
+
+# Vision LLM (GPT-5-mini vision for rich action understanding)
+VISION_INTERVAL = 6.0               # seconds between vision API calls
+VISION_MODEL = "gpt-5-mini"          # OpenAI model for vision analysis
+VISION_ENABLED = True                # set False to disable vision LLM
+
 # AI Commentator
 COMMENTATOR_MODEL = "gpt-5-mini"      # OpenAI model for commentary
 COMMENTATOR_INTERVAL = 4.0            # seconds between commentary lines

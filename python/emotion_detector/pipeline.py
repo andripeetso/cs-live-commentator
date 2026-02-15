@@ -12,8 +12,10 @@ from .capture import WebcamCapture
 from .commentator import Commentator
 from .detector import EmotionDetector
 from .display import AnnotatedDisplay
-from .events import ActionEvent, EmotionEvent, EventEmitter
+from .events import ActionEvent, EmotionEvent, EventEmitter, GestureEvent
+from .screen_context import ScreenContext
 from .smoothing import EmotionSmoother
+from .vision_analyzer import VisionAnalyzer
 
 
 class EmotionPipeline:
@@ -24,7 +26,13 @@ class EmotionPipeline:
 
     The detector interleaves:
         - MediaPipe Pose (every frame) → action detection
+        - MediaPipe Hand (every frame) → gesture detection
         - DeepFace (every Nth frame) → emotion detection
+
+    Background threads:
+        - VisionAnalyzer: sends webcam frames to GPT-5-mini vision every ~6s
+        - ScreenContext: polls active window title every ~3s
+        - Commentator: generates esports commentary every ~4s
 
     The display MUST run on the main thread (macOS cv2.imshow requirement).
     """
@@ -38,6 +46,7 @@ class EmotionPipeline:
         self._event_emitter = EventEmitter()
         self._event_emitter.on_emotion(self._log_emotion)
         self._event_emitter.on_action(self._log_action)
+        self._event_emitter.on_gesture(self._log_gesture)
 
         # Components
         self._smoother = EmotionSmoother(event_emitter=self._event_emitter)
@@ -54,6 +63,11 @@ class EmotionPipeline:
         )
         self._display = AnnotatedDisplay(result_queue=self._result_queue)
         self._commentator = Commentator(event_emitter=self._event_emitter)
+        self._vision_analyzer = VisionAnalyzer(commentator=self._commentator)
+        self._screen_context = ScreenContext(commentator=self._commentator)
+
+        # Give detector a reference to vision analyzer for frame sharing
+        self._detector.set_vision_analyzer(self._vision_analyzer)
 
     @property
     def event_emitter(self) -> EventEmitter:
@@ -75,8 +89,10 @@ class EmotionPipeline:
         self._capture.start()
         self._detector.start()
         self._commentator.start()
+        self._vision_analyzer.start()
+        self._screen_context.start()
         print("[PIPELINE] Pipeline running. Press 'q' in the preview window to quit.")
-        print("[PIPELINE] Detecting: emotions (DeepFace) + actions (MediaPipe Pose)")
+        print("[PIPELINE] Detecting: emotions (DeepFace) + actions (MediaPipe Pose) + gestures (MediaPipe Hand)")
 
         try:
             self._display.run()  # Blocking — runs on main thread
@@ -89,6 +105,8 @@ class EmotionPipeline:
         """Gracefully stop all components."""
         try:
             self._display.running = False
+            self._screen_context.stop()
+            self._vision_analyzer.stop()
             self._commentator.stop()
             self._capture.stop()
             self._detector.stop()
@@ -109,4 +127,12 @@ class EmotionPipeline:
         """Default handler: print action events to stdout."""
         label = event.action.upper().replace("_", " ")
         print(f"[EVENT] Action detected → {label} ({event.confidence:.0%})")
+        print(f"        {event.to_json()}")
+
+    @staticmethod
+    def _log_gesture(event: GestureEvent) -> None:
+        """Default handler: print gesture events to stdout."""
+        label = event.gesture.upper().replace("_", " ")
+        hand = f" ({event.hand_label})" if event.hand_label else ""
+        print(f"[EVENT] Gesture detected → {label}{hand} ({event.confidence:.0%})")
         print(f"        {event.to_json()}")

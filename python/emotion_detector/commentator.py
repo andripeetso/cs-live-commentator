@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from openai import OpenAI
 
 from . import config
-from .events import ActionEvent, EmotionEvent, EventEmitter
+from .events import ActionEvent, EmotionEvent, EventEmitter, GestureEvent
 
 SYSTEM_PROMPT = """\
 You are an energetic, hype esports caster doing live onstage commentary. \
@@ -45,6 +45,11 @@ class _EventSnapshot:
     prev_emotion: str | None = None
     action: str | None = None
     action_confidence: float = 0.0
+    gesture: str | None = None
+    gesture_confidence: float = 0.0
+    gesture_hand: str = ""
+    vision_description: str = ""
+    screen_context: str = ""
 
 
 class Commentator:
@@ -78,7 +83,14 @@ class Commentator:
         self._prev_emotion: str | None = None
         self._current_action: str | None = None
         self._current_action_confidence: float = 0.0
+        self._current_gesture: str | None = None
+        self._current_gesture_confidence: float = 0.0
+        self._current_gesture_hand: str = ""
         self._has_new_event = False
+
+        # External context (set by VisionAnalyzer and ScreenContext)
+        self._vision_description: str = ""
+        self._screen_context: str = ""
 
         # Commentary history (for context / avoiding repetition)
         self._history: deque[str] = deque(maxlen=config.COMMENTATOR_HISTORY_SIZE)
@@ -86,6 +98,7 @@ class Commentator:
         # Register callbacks
         event_emitter.on_emotion(self._on_emotion)
         event_emitter.on_action(self._on_action)
+        event_emitter.on_gesture(self._on_gesture)
 
         # Background thread for generation
         self._running = False
@@ -111,6 +124,20 @@ class Commentator:
         self._current_action_confidence = event.confidence
         self._has_new_event = True
 
+    def _on_gesture(self, event: GestureEvent) -> None:
+        self._current_gesture = event.gesture
+        self._current_gesture_confidence = event.confidence
+        self._current_gesture_hand = event.hand_label
+        self._has_new_event = True
+
+    def set_vision_description(self, description: str) -> None:
+        """Called by VisionAnalyzer to provide scene context."""
+        self._vision_description = description
+
+    def set_screen_context(self, context: str) -> None:
+        """Called by ScreenContext to provide desktop context."""
+        self._screen_context = context
+
     def _commentary_loop(self) -> None:
         # Wait for first detection
         while self._running and not self._has_new_event:
@@ -125,6 +152,11 @@ class Commentator:
                     prev_emotion=self._prev_emotion,
                     action=self._current_action,
                     action_confidence=self._current_action_confidence,
+                    gesture=self._current_gesture,
+                    gesture_confidence=self._current_gesture_confidence,
+                    gesture_hand=self._current_gesture_hand,
+                    vision_description=self._vision_description,
+                    screen_context=self._screen_context,
                 )
                 self._generate(snapshot)
 
@@ -145,6 +177,16 @@ class Commentator:
 
         if snap.action:
             parts.append(f"Action detected: {snap.action} ({snap.action_confidence:.0%})")
+
+        if snap.gesture:
+            hand = f" ({snap.gesture_hand} hand)" if snap.gesture_hand else ""
+            parts.append(f"Hand gesture: {snap.gesture}{hand} ({snap.gesture_confidence:.0%})")
+
+        if snap.vision_description:
+            parts.append(f"Scene analysis: {snap.vision_description}")
+
+        if snap.screen_context:
+            parts.append(f"On screen: {snap.screen_context}")
 
         if not parts:
             return

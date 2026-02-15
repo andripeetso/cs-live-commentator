@@ -30,8 +30,24 @@ class ActionEvent:
     """Represents a detected action change."""
 
     timestamp: float
-    action: str  # e.g. "waving", "clapping", "hand_raised"
+    action: str  # e.g. "hand_raised"
     confidence: float  # 0.0 - 1.0
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict())
+
+
+@dataclass
+class GestureEvent:
+    """Represents a detected hand gesture."""
+
+    timestamp: float
+    gesture: str  # e.g. "middle_finger", "thumbs_up", "peace_sign"
+    confidence: float
+    hand_label: str = ""  # "Left" or "Right"
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -61,6 +77,7 @@ class EventEmitter:
     def __init__(self) -> None:
         self._emotion_callbacks: list[Callable[[EmotionEvent], None]] = []
         self._action_callbacks: list[Callable[[ActionEvent], None]] = []
+        self._gesture_callbacks: list[Callable[[GestureEvent], None]] = []
 
     def on_emotion(self, callback: Callable[[EmotionEvent], None]) -> None:
         """Register a callback for emotion change events."""
@@ -69,6 +86,10 @@ class EventEmitter:
     def on_action(self, callback: Callable[[ActionEvent], None]) -> None:
         """Register a callback for action change events."""
         self._action_callbacks.append(callback)
+
+    def on_gesture(self, callback: Callable[[GestureEvent], None]) -> None:
+        """Register a callback for hand gesture events."""
+        self._gesture_callbacks.append(callback)
 
     def emit(self, event: EmotionEvent) -> None:
         """Call all registered emotion callbacks."""
@@ -81,6 +102,14 @@ class EventEmitter:
     def emit_action(self, event: ActionEvent) -> None:
         """Call all registered action callbacks."""
         for cb in self._action_callbacks:
+            try:
+                cb(event)
+            except Exception:
+                pass
+
+    def emit_gesture(self, event: GestureEvent) -> None:
+        """Call all registered gesture callbacks."""
+        for cb in self._gesture_callbacks:
             try:
                 cb(event)
             except Exception:

@@ -130,9 +130,9 @@ Audio: Web Audio API (browser) / `sox`/`ffplay` via child_process (server testin
 
 ---
 
-## Python Emotion Detector (Step 1 MVP)
+## Python Emotion Detector + AI Commentator
 
-Standalone Python webcam emotion detection. Will eventually feed into the commentator system.
+Real-time webcam emotion/action/gesture detection with AI esports-style commentary.
 
 **Location**: `python/`
 **Docs**: `docs/EMOTION-DETECTOR-PRD.md`
@@ -142,18 +142,55 @@ Standalone Python webcam emotion detection. Will eventually feed into the commen
 ```bash
 cd python && python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt        # First run downloads DeepFace model (~100MB)
-python main.py                         # Start emotion detection (press 'q' to quit)
+python main.py                         # Start (press 'q' to quit)
 python main.py --camera 1              # Use alternate camera
-python -m pytest tests/ -v             # Run tests
+python -m pytest tests/ -v             # Run tests (48 tests)
 ```
 
 ### Architecture
 
-Three-thread pipeline: `WebcamCapture` (daemon) → `EmotionDetector`/DeepFace (daemon) → `AnnotatedDisplay` (main thread).
-Emits `EmotionEvent` JSON to stdout on emotion changes (debounced, smoothed).
+```
+FAST PATH (every frame, <50ms) — Detector Thread
+  MediaPipe Pose → hand_raised detection
+  MediaPipe Hand → gesture detection (middle finger, thumbs up, fist, peace, open palm)
+  DeepFace (every 3rd frame) → emotion detection
 
-### Roadmap
+SLOW PATH (background threads)
+  VisionAnalyzer → GPT-5-mini vision API every ~6s → rich scene understanding
+  ScreenContext → active window title via pyobjc every ~3s → desktop awareness
+  Commentator → GPT-5-mini text every ~4s → esports-style commentary
 
-1. **Step 1 (current)**: Webcam → face detection → emotion recognition → live annotated preview
-2. **Step 2**: Add screen capture (`mss` library) to see what user is doing
-3. **Step 3**: Feed emotions + screen context into LLM for spoken "work mode" commentary via WebSocket bridge to Node.js
+Display → main thread (macOS requirement)
+```
+
+### Key Files
+
+| Module | Purpose |
+|--------|---------|
+| `pipeline.py` | Orchestrator — wires all components |
+| `detector.py` | Interleaved detection (pose + hands + emotions) |
+| `hand_detector.py` | MediaPipe HandLandmarker (21 landmarks per hand) |
+| `hand_rules.py` | Gesture rules: middle_finger, thumbs_up, fist, peace, open_palm |
+| `action_detector.py` | MediaPipe PoseLandmarker (33 body landmarks) |
+| `action_rules.py` | Pose rules: hand_raised (only reliable one kept) |
+| `vision_analyzer.py` | Sends webcam frames to GPT-5-mini vision for scene understanding |
+| `screen_context.py` | Polls active macOS window title via pyobjc |
+| `commentator.py` | Generates esports commentary from all event streams |
+| `events.py` | EmotionEvent, ActionEvent, GestureEvent + EventEmitter |
+| `smoothing.py` | Emotion EMA smoothing with debounced events |
+
+### Environment Variables
+
+```
+OPENAI_API_KEY=sk-...    # Required for commentary + vision analysis (in python/.env)
+```
+
+### MediaPipe quirk
+
+MediaPipe 0.10.21+ removed the legacy `mp.solutions` API. This project uses the Tasks API (`mp.tasks.vision.PoseLandmarker`, `mp.tasks.vision.HandLandmarker`) with model files in `python/models/`.
+
+### GPT-5-mini quirks
+
+- Uses `max_completion_tokens` (not `max_tokens`)
+- No custom `temperature` (only default=1 supported)
+- Needs ~1000 tokens for reasoning headroom

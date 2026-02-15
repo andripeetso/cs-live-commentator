@@ -6,11 +6,7 @@ from emotion_detector.action_rules import (
     ActionResult,
     Landmark,
     detect_all,
-    is_arms_crossed,
-    is_clapping,
-    is_drinking,
     is_hand_raised,
-    is_waving,
 )
 
 
@@ -68,108 +64,8 @@ class TestHandRaised:
         lms = _make_landmarks({
             15: _lm(0.33, 0.05, vis=0.1),  # raised but low visibility
         })
-        # Should still detect from right wrist (default position, not raised)
         confidence = is_hand_raised(lms)
         assert confidence == 0.0
-
-
-class TestWaving:
-    def _make_waving_buffer(self) -> deque[list[Landmark]]:
-        """Create a buffer simulating waving motion."""
-        buffer = deque(maxlen=15)
-        for i in range(10):
-            # Oscillate wrist X position while keeping it raised
-            x_offset = 0.05 * (1 if i % 2 == 0 else -1)
-            lms = _make_landmarks({
-                15: _lm(0.33 + x_offset, 0.1),  # raised + oscillating
-            })
-            buffer.append(lms)
-        return buffer
-
-    def test_waving_detected(self):
-        buffer = self._make_waving_buffer()
-        lms = _make_landmarks({15: _lm(0.38, 0.1)})  # hand raised
-        confidence = is_waving(lms, buffer)
-        assert confidence > 0.3
-
-    def test_static_hand_not_waving(self):
-        buffer = deque(maxlen=15)
-        for _ in range(10):
-            lms = _make_landmarks({15: _lm(0.33, 0.1)})  # raised but static
-            buffer.append(lms)
-        lms = _make_landmarks({15: _lm(0.33, 0.1)})
-        assert is_waving(lms, buffer) == 0.0
-
-    def test_short_buffer_returns_zero(self):
-        buffer = deque(maxlen=15)
-        for _ in range(3):
-            buffer.append(_make_landmarks())
-        assert is_waving(_make_landmarks(), buffer) == 0.0
-
-
-class TestClapping:
-    def _make_clapping_buffer(self) -> deque[list[Landmark]]:
-        """Create a buffer simulating clapping motion."""
-        buffer = deque(maxlen=15)
-        for i in range(8):
-            if i % 2 == 0:
-                # Wrists together (clap)
-                lms = _make_landmarks({
-                    15: _lm(0.49, 0.4),
-                    16: _lm(0.51, 0.4),
-                })
-            else:
-                # Wrists apart
-                lms = _make_landmarks({
-                    15: _lm(0.35, 0.4),
-                    16: _lm(0.65, 0.4),
-                })
-            buffer.append(lms)
-        return buffer
-
-    def test_clapping_detected(self):
-        buffer = self._make_clapping_buffer()
-        lms = _make_landmarks({
-            15: _lm(0.49, 0.4),
-            16: _lm(0.51, 0.4),
-        })
-        confidence = is_clapping(lms, buffer)
-        assert confidence > 0.3
-
-    def test_hands_apart_not_clapping(self):
-        buffer = deque(maxlen=15)
-        for _ in range(8):
-            lms = _make_landmarks()  # default: hands at sides
-            buffer.append(lms)
-        assert is_clapping(_make_landmarks(), buffer) == 0.0
-
-
-class TestDrinking:
-    def test_drinking_detected(self):
-        lms = _make_landmarks({
-            15: _lm(0.48, 0.17),  # left wrist near mouth (y ~0.18)
-            13: _lm(0.40, 0.35),  # elbow bent
-        })
-        confidence = is_drinking(lms)
-        assert confidence > 0.3
-
-    def test_hand_at_rest_not_drinking(self):
-        lms = _make_landmarks()  # default rest position
-        assert is_drinking(lms) == 0.0
-
-
-class TestArmsCrossed:
-    def test_arms_crossed_detected(self):
-        lms = _make_landmarks({
-            15: _lm(0.55, 0.35),  # left wrist on right side, at chest
-            16: _lm(0.45, 0.35),  # right wrist on left side, at chest
-        })
-        confidence = is_arms_crossed(lms)
-        assert confidence > 0.5
-
-    def test_arms_at_sides_not_crossed(self):
-        lms = _make_landmarks()
-        assert is_arms_crossed(lms) == 0.0
 
 
 class TestDetectAll:
