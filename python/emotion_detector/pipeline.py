@@ -53,17 +53,24 @@ class EmotionPipeline:
     def run(self) -> None:
         """Start the pipeline. Blocks until user quits.
 
-        Starts capture and detector threads, then runs display on main thread.
+        Opens camera on main thread (required by macOS), then starts
+        capture and detector threads, then runs display on main thread.
         """
-        print("Loading emotion model (first run may download ~100MB)...")
+        # Camera MUST be opened on main thread for macOS authorization
+        if not self._capture.open_camera():
+            print("ERROR: Could not open camera. Check permissions in System Settings > Privacy > Camera.")
+            return
+
+        print("[PIPELINE] Loading emotion model (first run may download ~100MB)...")
         self._capture.start()
         self._detector.start()
-        print("Pipeline running. Press 'q' in the window to quit.")
+        print("[PIPELINE] Pipeline running. Press 'q' in the preview window to quit.")
+        print("[PIPELINE] Waiting for first emotion detection...")
 
         try:
             self._display.run()  # Blocking — runs on main thread
         except KeyboardInterrupt:
-            pass
+            print("\n[PIPELINE] Interrupted by user")
         finally:
             self.stop()
 
@@ -78,4 +85,5 @@ class EmotionPipeline:
     @staticmethod
     def _log_emotion(event: EmotionEvent) -> None:
         """Default handler: print emotion events as JSON to stdout."""
-        print(f"[EMOTION] {event.to_json()}")
+        print(f"[EVENT] Emotion changed → {event.dominant_emotion} ({event.confidence:.0%})")
+        print(f"        {event.to_json()}")

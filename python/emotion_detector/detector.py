@@ -46,7 +46,12 @@ class EmotionDetector:
             self._deepface = DeepFace
 
     def _process_loop(self) -> None:
+        print("[DETECTOR] Loading DeepFace model...")
         self._ensure_deepface()
+        print("[DETECTOR] Model loaded. Processing frames...")
+
+        frame_count = 0
+        last_dominant = None
 
         while self._running:
             try:
@@ -57,6 +62,7 @@ class EmotionDetector:
             start = time.time()
             result = self._analyze_frame(frame)
             result.processing_time_ms = (time.time() - start) * 1000
+            frame_count += 1
 
             # Feed to smoother if face found
             smoothed = self._smoother.state
@@ -65,6 +71,20 @@ class EmotionDetector:
                     result.emotion_scores,
                     result.face_region,
                 )
+
+                # Log when dominant emotion changes
+                if smoothed.dominant != last_dominant:
+                    top_3 = sorted(smoothed.scores.items(), key=lambda x: x[1], reverse=True)[:3]
+                    top_str = ", ".join(f"{e}:{s:.0f}%" for e, s in top_3)
+                    print(f"[DETECTOR] {smoothed.dominant.upper()} ({smoothed.confidence:.0%}) | {top_str} | {result.processing_time_ms:.0f}ms")
+                    last_dominant = smoothed.dominant
+            else:
+                if last_dominant is not None:
+                    print(f"[DETECTOR] No face detected ({result.processing_time_ms:.0f}ms)")
+                    last_dominant = None
+
+            if frame_count == 1:
+                print(f"[DETECTOR] First frame processed in {result.processing_time_ms:.0f}ms")
 
             # Put result for display
             if self._result_queue.full():
