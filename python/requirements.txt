@@ -1,4 +1,7 @@
 opencv-python>=4.9.0,<5.0.0
 deepface>=0.0.93,<1.0.0
 tf-keras>=2.16.0
-numpy>=1.24.0,<2.0.0
+mediapipe>=0.10.21
+openai>=1.0.0
+python-dotenv>=1.0.0
+numpy>=1.24.0

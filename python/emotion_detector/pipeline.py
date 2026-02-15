@@ -7,10 +7,12 @@ import queue
 import cv2
 
 from . import config
+from .action_smoothing import ActionSmoother
 from .capture import WebcamCapture
+from .commentator import Commentator
 from .detector import EmotionDetector
 from .display import AnnotatedDisplay
-from .events import EmotionEvent, EventEmitter
+from .events import ActionEvent, EmotionEvent, EventEmitter
 from .smoothing import EmotionSmoother
 
 
@@ -19,6 +21,10 @@ class EmotionPipeline:
 
     Architecture:
         Capture Thread (daemon) → Queue → Detector Thread (daemon) → Queue → Display (main thread)
+
+    The detector interleaves:
+        - MediaPipe Pose (every frame) → action detection
+        - DeepFace (every Nth frame) → emotion detection
 
     The display MUST run on the main thread (macOS cv2.imshow requirement).
     """
@@ -31,9 +37,11 @@ class EmotionPipeline:
         # Event system
         self._event_emitter = EventEmitter()
         self._event_emitter.on_emotion(self._log_emotion)
+        self._event_emitter.on_action(self._log_action)
 
         # Components
         self._smoother = EmotionSmoother(event_emitter=self._event_emitter)
+        self._action_smoother = ActionSmoother(event_emitter=self._event_emitter)
         self._capture = WebcamCapture(
             camera_index=camera_index,
             frame_queue=self._capture_queue,
@@ -42,8 +50,10 @@ class EmotionPipeline:
             capture_queue=self._capture_queue,
             result_queue=self._result_queue,
             smoother=self._smoother,
+            action_smoother=self._action_smoother,
         )
         self._display = AnnotatedDisplay(result_queue=self._result_queue)
+        self._commentator = Commentator(event_emitter=self._event_emitter)
 
     @property
     def event_emitter(self) -> EventEmitter:
@@ -61,11 +71,12 @@ class EmotionPipeline:
             print("ERROR: Could not open camera. Check permissions in System Settings > Privacy > Camera.")
             return
 
-        print("[PIPELINE] Loading emotion model (first run may download ~100MB)...")
+        print("[PIPELINE] Loading models (first run may download ~100MB)...")
         self._capture.start()
         self._detector.start()
+        self._commentator.start()
         print("[PIPELINE] Pipeline running. Press 'q' in the preview window to quit.")
-        print("[PIPELINE] Waiting for first emotion detection...")
+        print("[PIPELINE] Detecting: emotions (DeepFace) + actions (MediaPipe Pose)")
 
         try:
             self._display.run()  # Blocking — runs on main thread
@@ -76,14 +87,26 @@ class EmotionPipeline:
 
     def stop(self) -> None:
         """Gracefully stop all components."""
-        self._display.running = False
-        self._capture.stop()
-        self._detector.stop()
-        cv2.destroyAllWindows()
-        print("Pipeline stopped.")
+        try:
+            self._display.running = False
+            self._commentator.stop()
+            self._capture.stop()
+            self._detector.stop()
+            cv2.destroyAllWindows()
+            print("[PIPELINE] Pipeline stopped.")
+        except KeyboardInterrupt:
+            print("\n[PIPELINE] Force quit.")
+            cv2.destroyAllWindows()
 
     @staticmethod
     def _log_emotion(event: EmotionEvent) -> None:
         """Default handler: print emotion events as JSON to stdout."""
         print(f"[EVENT] Emotion changed → {event.dominant_emotion} ({event.confidence:.0%})")
+        print(f"        {event.to_json()}")
+
+    @staticmethod
+    def _log_action(event: ActionEvent) -> None:
+        """Default handler: print action events to stdout."""
+        label = event.action.upper().replace("_", " ")
+        print(f"[EVENT] Action detected → {label} ({event.confidence:.0%})")
         print(f"        {event.to_json()}")

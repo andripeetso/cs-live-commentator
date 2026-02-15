@@ -15,10 +15,28 @@ DETECTOR_BACKEND = "opencv"  # fastest; switch to "mediapipe" for better accurac
 ENFORCE_DETECTION = False     # don't crash when no face visible
 ACTIONS = ("emotion",)        # only emotion — skip age/gender/race
 
-# Smoothing
+# Emotion smoothing
 SMOOTHING_WINDOW = 5          # rolling average over N frames
 DEBOUNCE_SECONDS = 1.0        # min interval between emitted events
 CONFIDENCE_THRESHOLD = 0.15   # min delta to trigger a new event
+
+# Interleaved detection
+DEEPFACE_EVERY_N = 3          # run DeepFace every Nth frame (others: MediaPipe only)
+
+# MediaPipe Pose (Tasks API — uses pose_landmarker_lite.task model)
+POSE_MIN_DETECTION_CONFIDENCE = 0.5
+POSE_MIN_TRACKING_CONFIDENCE = 0.5
+
+# Action detection
+ACTION_BUFFER_SIZE = 15       # temporal buffer for multi-frame actions
+ACTION_SMOOTHING_WINDOW = 8   # rolling vote window
+ACTION_DEBOUNCE_SECONDS = 0.5 # min interval between action events
+ACTION_MIN_VOTE_RATIO = 0.3   # min fraction of window to report action
+
+# AI Commentator
+COMMENTATOR_MODEL = "gpt-5-mini"      # OpenAI model for commentary
+COMMENTATOR_INTERVAL = 4.0            # seconds between commentary lines
+COMMENTATOR_HISTORY_SIZE = 10         # recent lines kept to avoid repetition
 
 # Display
 BOX_COLOR = (0, 255, 0)       # green bounding box

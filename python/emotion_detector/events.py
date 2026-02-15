@@ -1,4 +1,4 @@
-"""Emotion event dataclass and callback-based event emitter."""
+"""Emotion/action event dataclasses and callback-based event emitter."""
 
 from __future__ import annotations
 
@@ -26,6 +26,21 @@ class EmotionEvent:
 
 
 @dataclass
+class ActionEvent:
+    """Represents a detected action change."""
+
+    timestamp: float
+    action: str  # e.g. "waving", "clapping", "hand_raised"
+    confidence: float  # 0.0 - 1.0
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict())
+
+
+@dataclass
 class DetectionResult:
     """Raw result from a single frame analysis."""
 
@@ -44,16 +59,29 @@ class EventEmitter:
     """
 
     def __init__(self) -> None:
-        self._callbacks: list[Callable[[EmotionEvent], None]] = []
+        self._emotion_callbacks: list[Callable[[EmotionEvent], None]] = []
+        self._action_callbacks: list[Callable[[ActionEvent], None]] = []
 
     def on_emotion(self, callback: Callable[[EmotionEvent], None]) -> None:
         """Register a callback for emotion change events."""
-        self._callbacks.append(callback)
+        self._emotion_callbacks.append(callback)
+
+    def on_action(self, callback: Callable[[ActionEvent], None]) -> None:
+        """Register a callback for action change events."""
+        self._action_callbacks.append(callback)
 
     def emit(self, event: EmotionEvent) -> None:
-        """Call all registered callbacks."""
-        for cb in self._callbacks:
+        """Call all registered emotion callbacks."""
+        for cb in self._emotion_callbacks:
             try:
                 cb(event)
             except Exception:
                 pass  # Don't let a bad callback crash the pipeline
+
+    def emit_action(self, event: ActionEvent) -> None:
+        """Call all registered action callbacks."""
+        for cb in self._action_callbacks:
+            try:
+                cb(event)
+            except Exception:
+                pass

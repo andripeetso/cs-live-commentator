@@ -1,4 +1,4 @@
-"""Annotated display — renders webcam feed with emotion overlays."""
+"""Annotated display — renders webcam feed with emotion + action overlays."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 
 from . import config
+from .action_smoothing import ActionState
 from .events import DetectionResult
 from .smoothing import SmoothedState
 
@@ -30,12 +31,23 @@ class AnnotatedDisplay:
         """Main display loop (blocking). Call from the main thread."""
         while self.running:
             try:
-                frame, result, smoothed = self._result_queue.get(timeout=1.0)
+                frame, result, smoothed, action_state = self._result_queue.get(timeout=1.0)
             except queue.Empty:
                 continue
+            except ValueError:
+                # Handle old 3-tuple format during transition
+                try:
+                    data = self._result_queue.get(timeout=1.0)
+                    if len(data) == 3:
+                        frame, result, smoothed = data
+                        action_state = ActionState()
+                    else:
+                        continue
+                except Exception:
+                    continue
 
             self._update_fps()
-            annotated = self._annotate(frame, result, smoothed)
+            annotated = self._annotate(frame, result, smoothed, action_state)
             cv2.imshow("Emotion Detector", annotated)
 
             if cv2.waitKey(1) & 0xFF == ord("q"):
@@ -54,6 +66,7 @@ class AnnotatedDisplay:
         frame: np.ndarray,
         result: DetectionResult,
         smoothed: SmoothedState,
+        action_state: ActionState,
     ) -> np.ndarray:
         """Draw all overlays on the frame."""
         # FPS counter (top-left)
@@ -88,30 +101,58 @@ class AnnotatedDisplay:
                 (0, 0, 255),
                 config.FONT_THICKNESS,
             )
-            return frame
 
-        x, y, w, h = result.face_region
+        if result.face_found:
+            x, y, w, h = result.face_region
 
-        # Bounding box
-        cv2.rectangle(frame, (x, y), (x + w, y + h), config.BOX_COLOR, 2)
+            # Bounding box
+            cv2.rectangle(frame, (x, y), (x + w, y + h), config.BOX_COLOR, 2)
 
-        # Emotion label above the box
-        label = f"{smoothed.dominant} {smoothed.confidence:.0%}"
-        label_y = max(y - 10, 20)
-        cv2.putText(
-            frame,
-            label,
-            (x, label_y),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            config.FONT_SCALE * 1.2,
-            config.BOX_COLOR,
-            config.FONT_THICKNESS,
-        )
+            # Emotion label above the box
+            label = f"{smoothed.dominant} {smoothed.confidence:.0%}"
+            label_y = max(y - 10, 20)
+            cv2.putText(
+                frame,
+                label,
+                (x, label_y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                config.FONT_SCALE * 1.2,
+                config.BOX_COLOR,
+                config.FONT_THICKNESS,
+            )
 
-        # Emotion bar chart (right side)
-        self._draw_emotion_bars(frame, smoothed.scores)
+            # Emotion bar chart (right side)
+            self._draw_emotion_bars(frame, smoothed.scores)
+
+        # Action label (bottom-left, always visible when action detected)
+        self._draw_action_label(frame, action_state)
 
         return frame
+
+    def _draw_action_label(
+        self,
+        frame: np.ndarray,
+        action_state: ActionState,
+    ) -> None:
+        """Draw detected action label at the bottom of the frame."""
+        if action_state.action is None:
+            return
+
+        label = action_state.action.upper().replace("_", " ")
+        confidence = f"{action_state.confidence:.0%}"
+        text = f"{label} {confidence}"
+
+        # Cyan text, bottom-left area
+        y = config.FRAME_HEIGHT - 50
+        cv2.putText(
+            frame,
+            text,
+            (10, y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            config.FONT_SCALE * 1.4,
+            (255, 255, 0),  # cyan in BGR
+            config.FONT_THICKNESS,
+        )
 
     def _draw_emotion_bars(
         self,

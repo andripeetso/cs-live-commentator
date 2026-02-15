@@ -1,9 +1,15 @@
 """
-Webcam Emotion Detector MVP
-Usage: python python/main.py [--camera 0]
+Webcam Emotion Detector + AI Commentator
+Usage: python main.py [--camera 0]
 """
 
 import argparse
+import os
+
+from dotenv import load_dotenv
+
+# Load .env before any other imports that might need env vars
+load_dotenv()
 
 from emotion_detector import config
 from emotion_detector.pipeline import EmotionPipeline
